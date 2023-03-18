@@ -1,9 +1,9 @@
 model_name:
   desc: HuggingFace language model to use, or "mock" for testing
-  value: "theblackcat102/pythia-1b-deduped-sft"
+  value: "EleutherAI/gpt-neo-125M"
 reward_model_name:
   desc: HuggingFace reward model to use, or "mock" for testing
-  value: "OpenAssistant/reward-model-deberta-v3-large-v2"
+  value: "OpenAssistant/reward-model-deberta-v3-base"
 log_with:
   desc: "The logger to use"
   value: "wandb"
@@ -15,7 +15,7 @@ mini_batch_size:
   value: 2
 batch_size:
   desc: "The batch size" # default 256 in og code
-  value: 32
+  value: 4
 gradient_accumulation_steps:
   desc: "The number of gradient accumulation steps"
   value: 1
