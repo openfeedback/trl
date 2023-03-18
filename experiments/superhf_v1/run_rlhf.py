@@ -262,6 +262,7 @@ def main():
         device = 0 if torch.cuda.is_available() else "cpu"  # to avoid a `pipeline` bug
     # This pipelinle is for hte reward model
     sentiment_pipe = pipeline(model="OpenAssistant/reward-model-deberta-v3-base", device=device)
+    print(f"The device is {device}")
 
     # We then define the arguments to pass to the `generate` function. These arguments
     # are passed to the `generate` function of the PPOTrainer, which is a wrapper around
@@ -281,9 +282,9 @@ def main():
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
     tokenizer.pad_token = tokenizer.eos_token
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
-        query_tensors = [tokenizer(q, return_tensors="pt")["input_ids"].squeeze() for q in batch["query"]]
+        query_tensors = [tokenizer(q, return_tensors="pt")["input_ids"].squeeze().to(device) for q in batch["query"]]
         
-        # Get response from gpt2
+        # Get response from the model
         response_tensors = []
         for query in query_tensors:
             gen_len = output_length_sampler()
@@ -295,6 +296,8 @@ def main():
         # Compute sentiment score
         texts = [q + r for q, r in zip(batch["query"], batch["response"])]
         pipe_outputs = sentiment_pipe(texts, **sent_kwargs)
+        if len(pipe_outputs[0]):
+            print(f"len of output is {len(pipe_outputs[0])}, so maybe it should be output[1]['score']?")
         rewards = [torch.tensor(output[0]["score"]) for output in pipe_outputs]
 
         # Run PPO step
