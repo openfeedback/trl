@@ -171,11 +171,11 @@ def parse_args():
     script_args = parser.parse_args_into_dataclasses()[0]
     return script_args
 
-def build_dataset(dataset_names, tokenizer, max_prompt_char_length=1024, debug_max_prompts=0):
+def build_dataset(dataset_names, tokenizer, max_prompt_char_length=1024, debug_max_prompts=0, conversation_prompt=""):
     """
     Currentlty we don't use the tokenizer becauses the internal trainer 
     for some reason throws away the tokenized exmples.s
-    
+
     Returns:
         a pytorch dataset that implements the __getitem__ and __len__ methods.
         PPO trainer converts this to a pytorch dataloader.
@@ -190,9 +190,9 @@ def build_dataset(dataset_names, tokenizer, max_prompt_char_length=1024, debug_m
     # Filter out prompts that are too long
     old_prompt_count = len(prompts)
     prompts = [
-        prompt
+        conversation_prompt + prompt
         for prompt in prompts
-        if len(prompt) < max_prompt_char_length
+        if len(conversation_prompt + prompt) < max_prompt_char_length
     ]
     print(
         f"Filtered {old_prompt_count - len(prompts)} prompts over "
@@ -255,7 +255,7 @@ def main():
     # # get model response
     # response_tensor  = respond_to_batch(model_ref, query_tensor)
 
-    dataset = build_dataset(wandb.config.dataset_names, tokenizer, max_prompt_char_length=wandb.config.max_prompt_char_length, debug_max_prompts=wandb.config.debug_max_prompts)    
+    dataset = build_dataset(wandb.config.dataset_names, tokenizer, max_prompt_char_length=wandb.config.max_prompt_char_length, debug_max_prompts=wandb.config.debug_max_prompts, conversation_prompt=wandb.config.conversation_prompt)    
 
     def collator(data):
         return dict((key, [d[key] for d in data]) for key in data[0])
@@ -291,7 +291,7 @@ def main():
     output_max_length = 16
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
     tokenizer.pad_token = tokenizer.eos_token
-    for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
+    for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader), total=len(ppo_trainer.dataloader)):
         query_tensors = [tokenizer(q, return_tensors="pt")["input_ids"].squeeze().to(device) for q in batch["query"]]
         
         # Get response from the model
@@ -314,17 +314,6 @@ def main():
         # Run PPO step
         stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
         ppo_trainer.log_stats(stats, batch, rewards)
-
-    ###########################################
-
-    # define a reward for response
-    # # (this could be any reward such as human feedback or output from another model)
-    # reward = [torch.tensor(1.0)]
-
-    # # train model for one step with ppo
-    # train_stats = ppo_trainer.step([query_tensor[0]], [response_tensor[0]], reward)
-    # print(train_stats)
-
 
 if __name__ == "__main__":
     main()

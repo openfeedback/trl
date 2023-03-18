@@ -12,12 +12,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--batch_size",
-                "8",
-                "--debug_max_prompts",
-                "24",
-                "--mini_batch_size",
-                "2"
+                "--config",
+                "configs/debug.yaml"
             ]
         },
         {
