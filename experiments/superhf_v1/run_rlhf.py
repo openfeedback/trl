@@ -31,8 +31,10 @@ from datasets import load_dataset, Dataset
 
 T = TypeVar("T")
 
+import wandb
+
 WANDB_ENTITY_NAME = "stanfordaialignment"
-WANDB_PROJECT_NAME = "shf-iterative-v2"
+WANDB_PROJECT_NAME = "rlhf-trl-v0"
 
 
 def get_superhf_prompts(dataset_name: str, split: str = "train") -> list[str]:
@@ -149,8 +151,12 @@ class ScriptArguments:
         metadata={"help": "the dataset name(s) to use"}
     )
     debug_max_prompts: Optional[int] = field(
-        default=512,
+        default=0,
         metadata={"help": "the maximum number of prompts to use for debugging"}
+    )
+    notes: Optional[str] = field(
+        default="",
+        metadata={"help": "notes to add to the wandb run"}
     )
 
 def parse_args():
@@ -189,9 +195,6 @@ def build_dataset(dataset_names, tokenizer, max_prompt_char_length=1024, debug_m
 
     print(f"Loaded {len(prompts)} prompts.")
 
-
-    # dataset = ListDataset(prompts)
-
     def tokenize(sample):
         dictionized_example = {}
         dictionized_example["input_ids"] = tokenizer.encode(sample)
@@ -204,52 +207,6 @@ def build_dataset(dataset_names, tokenizer, max_prompt_char_length=1024, debug_m
     dataset.set_format(type="torch")
     return dataset
 
-def generate_completions(
-    self,
-    minibatch_size: int,
-    superbatch_prompts: list[str],
-) -> list[TensorType["batch", "seq_len"]]:
-    """
-    Generate completions for the prompts in the superbatch.
-
-    Args:
-        minibatch_size: The minibatch size to use for generation.
-        superbatch_prompts: The prompts in the superbatch.
-    """
-    self.training_args.minibatch_size_generating = minibatch_size
-
-    tqdm.write(f"Trying generation with batch size {minibatch_size}")
-
-    completion_dataloader = DataLoader(
-        ListDataset(superbatch_prompts),
-        batch_size=minibatch_size,
-        collate_fn=self.collate_fn_lm_completions,
-        pin_memory=True,
-    )
-
-    completions: list[TensorType["batch", "seq_len"]] = []
-    with torch.no_grad():
-        for minibatch in tqdm(
-            completion_dataloader,
-            desc="Generation",
-            total=len(completion_dataloader),
-        ):
-            encodings = minibatch
-            encodings.to(self.language_model.device)
-            completions.extend(
-                self.language_model.generate(
-                    **encodings,
-                    max_new_tokens=self.training_args.max_new_tokens,
-                    temperature=self.training_args.temperature,
-                    top_p=self.trainings_args.top_p,
-                    do_sample=True,
-                    num_return_sequences=1,
-                    pad_token_id=self.language_tokenizer.pad_token_id,
-                ).to("cpu")
-            )
-    return completions
-
-
 def main():
     script_args = parse_args()
     ppo_config = PPOConfig(
@@ -261,6 +218,14 @@ def main():
         gradient_accumulation_steps=script_args.gradient_accumulation_steps,
         seed=66,
     )
+    if script_args.log_with == "wandb":
+        wandb.init(
+            entity=WANDB_ENTITY_NAME,
+            project=WANDB_PROJECT_NAME,
+            notes=script_args.notes,
+            save_code=True,
+            config=script_args,
+        )
 
     assert ppo_config.mini_batch_size <= ppo_config.batch_size
     
