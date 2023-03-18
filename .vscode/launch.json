@@ -10,7 +10,23 @@
             "request": "launch",
             "program": "${workspaceFolder}/experiments/superhf_v1/run_rlhf.py",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": false,
+            "args": [
+                "--batch_size",
+                "8",
+                "--debug_max_prompts",
+                "24",
+                "--mini_batch_size",
+                "2"
+            ]
+        },
+        {
+            "name": "Python: Run sentiment example",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/sentiment/scripts/gpt2-sentiment.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }

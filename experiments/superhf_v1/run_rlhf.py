@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 import torch
 from torch.utils.data import DataLoader
-from torch.utils.data import IterableDataset
+from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 from transformers import AutoTokenizer, HfArgumentParser, pipeline
 
@@ -27,7 +27,7 @@ from torchtyping import TensorType
 from trl import PPOTrainer, PPOConfig, AutoModelForCausalLMWithValueHead, create_reference_model, set_seed
 from trl.core import respond_to_batch, LengthSampler
 
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 
 T = TypeVar("T")
 
@@ -110,14 +110,11 @@ def get_superhf_prompts(dataset_name: str, split: str = "train") -> list[str]:
 
     return prompts
 
-class ListDataset(IterableDataset[T]):
+class ListDataset(Dataset):
     """A Torch dataset that wraps a list of data."""
 
-    def __init__(self, data: list[T]):
+    def __init__(self, data):
         self.data = data
-
-    def __iter__(self) -> Iterator[T]:
-        return iter(self.data)
 
     def __len__(self) -> int:
         return len(self.data)
@@ -152,7 +149,7 @@ class ScriptArguments:
         metadata={"help": "the dataset name(s) to use"}
     )
     debug_max_prompts: Optional[int] = field(
-        default=100,
+        default=512,
         metadata={"help": "the maximum number of prompts to use for debugging"}
     )
 
@@ -161,11 +158,12 @@ def parse_args():
     script_args = parser.parse_args_into_dataclasses()[0]
     return script_args
 
-def build_dataset(dataset_names, max_prompt_char_length=1024, debug_max_prompts=0):
+def build_dataset(dataset_names, tokenizer, max_prompt_char_length=1024, debug_max_prompts=0):
     """
     Returns:
         a pytorch dataset that implements the __getitem__ and __len__ methods.
         PPO trainer converts this to a pytorch dataloader.
+        torch.utils.data.Dataset
     """
     prompts: list[str] = []
     for dataset in dataset_names:
@@ -191,7 +189,20 @@ def build_dataset(dataset_names, max_prompt_char_length=1024, debug_max_prompts=
 
     print(f"Loaded {len(prompts)} prompts.")
 
-    return ListDataset(prompts)
+
+    # dataset = ListDataset(prompts)
+
+    def tokenize(sample):
+        dictionized_example = {}
+        dictionized_example["input_ids"] = tokenizer.encode(sample)
+        dictionized_example["query"] = tokenizer.decode(dictionized_example["input_ids"])
+        return dictionized_example
+    
+    prompts_2 = [tokenize(prompt) for prompt in prompts]
+    prompts_3 = {"inputs_ids": [d["input_ids"] for d in prompts_2], "query": [d["query"] for d in prompts_2] }
+    dataset = Dataset.from_dict(prompts_3)
+    dataset.set_format(type="torch")
+    return dataset
 
 def generate_completions(
     self,
@@ -250,12 +261,14 @@ def main():
         gradient_accumulation_steps=script_args.gradient_accumulation_steps,
         seed=66,
     )
+
+    assert ppo_config.mini_batch_size <= ppo_config.batch_size
     
     model = AutoModelForCausalLMWithValueHead.from_pretrained(ppo_config.model_name)
     model_ref = AutoModelForCausalLMWithValueHead.from_pretrained(ppo_config.model_name)
-    tokenizer = AutoTokenizer.from_pretrained(ppo_config.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(ppo_config.model_name, padding_side='left')
 
-    sent_kwargs = {"return_all_scores": True, "function_to_apply": "none", "batch_size": 16}
+    sent_kwargs = {"top_k": None, "function_to_apply": "none", "batch_size": script_args.batch_size}
     
     # set seed before initializing value head for deterministic eval
     set_seed(ppo_config.seed)
@@ -267,11 +280,14 @@ def main():
     # # get model response
     # response_tensor  = respond_to_batch(model_ref, query_tensor)
 
-    dataset = build_dataset(script_args.dataset_names, ppo_config.max_prompt_char_length, script_args.debug_max_prompts)
+    dataset = build_dataset(script_args.dataset_names, tokenizer, debug_max_prompts=script_args.debug_max_prompts)    
 
+    def collator(data):
+        return dict((key, [d[key] for d in data]) for key in data[0])
 
     # create a ppo trainer config, model, ref_model, tokenizer, dataset=dataset, data_collator=collator)
-    ppo_trainer = PPOTrainer(ppo_config, model, model_ref, tokenizer, dataset=dataset, data_collator=collators)
+    # the dataset and collator get bundled in a data loader together. 
+    ppo_trainer = PPOTrainer(ppo_config, model, model_ref, tokenizer, dataset=dataset, data_collator=collator) #, data_collator=collator)
 
     # We then build the sentiment analysis pipeline, passing the model name and the
     # sentiment analysis pipeline arguments. Let's also make sure to set the device
@@ -279,7 +295,8 @@ def main():
     device = ppo_trainer.accelerator.device
     if ppo_trainer.accelerator.num_processes == 1:
         device = 0 if torch.cuda.is_available() else "cpu"  # to avoid a `pipeline` bug
-    sentiment_pipe = pipeline("sentiment-analysis", model="lvwerra/distilbert-imdb", device=device)
+    # This pipelinle is for hte reward model
+    sentiment_pipe = pipeline(model="OpenAssistant/reward-model-deberta-v3-base", device=device)
 
     # We then define the arguments to pass to the `generate` function. These arguments
     # are passed to the `generate` function of the PPOTrainer, which is a wrapper around
@@ -291,26 +308,29 @@ def main():
         "do_sample": True,
         "pad_token_id": tokenizer.eos_token_id,
     }
+
+    # input_size = LengthSampler(input_min_text_length, input_max_text_length)
+
     output_min_length = 4
     output_max_length = 16
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
-
+    tokenizer.pad_token = tokenizer.eos_token
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
-        query_tensors = batch["input_ids"]
-
+        query_tensors = [tokenizer(q, return_tensors="pt")["input_ids"].squeeze() for q in batch["query"]]
+        
         # Get response from gpt2
         response_tensors = []
         for query in query_tensors:
             gen_len = output_length_sampler()
             generation_kwargs["max_new_tokens"] = gen_len
             response = ppo_trainer.generate(query, **generation_kwargs)
-            response_tensors.append(response.squeeze()[-gen_len:])
+            response_tensors.append(response.squeeze())
         batch["response"] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
 
         # Compute sentiment score
         texts = [q + r for q, r in zip(batch["query"], batch["response"])]
         pipe_outputs = sentiment_pipe(texts, **sent_kwargs)
-        rewards = [torch.tensor(output[1]["score"]) for output in pipe_outputs]
+        rewards = [torch.tensor(output[0]["score"]) for output in pipe_outputs]
 
         # Run PPO step
         stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
