@@ -296,7 +296,7 @@ def main():
         # Compute sentiment score
         texts = [q + r for q, r in zip(batch["query"], batch["response"])]
         pipe_outputs = sentiment_pipe(texts, **sent_kwargs)
-        if len(pipe_outputs[0]):
+        if len(pipe_outputs[0]) > 1:
             print(f"len of output is {len(pipe_outputs[0])}, so maybe it should be output[1]['score']?")
         rewards = [torch.tensor(output[0]["score"]) for output in pipe_outputs]
 
