@@ -173,6 +173,9 @@ def parse_args():
 
 def build_dataset(dataset_names, tokenizer, max_prompt_char_length=1024, debug_max_prompts=0):
     """
+    Currentlty we don't use the tokenizer becauses the internal trainer 
+    for some reason throws away the tokenized exmples.s
+    
     Returns:
         a pytorch dataset that implements the __getitem__ and __len__ methods.
         PPO trainer converts this to a pytorch dataloader.
@@ -204,12 +207,12 @@ def build_dataset(dataset_names, tokenizer, max_prompt_char_length=1024, debug_m
 
     def tokenize(sample):
         dictionized_example = {}
-        dictionized_example["input_ids"] = tokenizer.encode(sample)
-        dictionized_example["query"] = tokenizer.decode(dictionized_example["input_ids"])
+        # dictionized_example["input_ids"] = tokenizer.encode(sample)
+        dictionized_example["query"] = sample # tokenizer.decode(dictionized_example["input_ids"])
         return dictionized_example
     
     prompts_2 = [tokenize(prompt) for prompt in prompts]
-    prompts_3 = {"inputs_ids": [d["input_ids"] for d in prompts_2], "query": [d["query"] for d in prompts_2] }
+    prompts_3 = {"query": [d["query"] for d in prompts_2] }
     dataset = Dataset.from_dict(prompts_3)
     dataset.set_format(type="torch")
     return dataset
@@ -252,7 +255,7 @@ def main():
     # # get model response
     # response_tensor  = respond_to_batch(model_ref, query_tensor)
 
-    dataset = build_dataset(wandb.config.dataset_names, tokenizer, debug_max_prompts=wandb.config.debug_max_prompts)    
+    dataset = build_dataset(wandb.config.dataset_names, tokenizer, max_prompt_char_length=wandb.config.max_prompt_char_length, debug_max_prompts=wandb.config.debug_max_prompts)    
 
     def collator(data):
         return dict((key, [d[key] for d in data]) for key in data[0])
@@ -294,8 +297,9 @@ def main():
         # Get response from the model
         response_tensors = []
         for query in query_tensors:
-            gen_len = output_length_sampler()
-            generation_kwargs["max_new_tokens"] = gen_len
+            # gen_len = output_length_sampler()
+            # generation_kwargs["max_new_tokens"] = gen_len
+            generation_kwargs["max_new_tokens"] = wandb.config.max_new_tokens
             response = ppo_trainer.generate(query, **generation_kwargs)
             response_tensors.append(response.squeeze())
         batch["response"] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
