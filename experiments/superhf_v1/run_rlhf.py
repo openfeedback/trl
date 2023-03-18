@@ -33,6 +33,8 @@ T = TypeVar("T")
 
 import wandb
 
+import os
+
 WANDB_ENTITY_NAME = "stanfordaialignment"
 WANDB_PROJECT_NAME = "rlhf-trl-v0"
 
@@ -138,22 +140,27 @@ class ScriptArguments:
 
     # NOTE: gpt2 models use Conv1D instead of Linear layers which are not yet supported in 8 bit mode
     # models like gpt-neo* models are more suitable.
-    model_name: Optional[str] = field(default="EleutherAI/gpt-neo-125M", metadata={"help": "the model name"})
-    log_with: Optional[str] = field(default=None, metadata={"help": "use 'wandb' to log with wandb"})
-    learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
-    mini_batch_size: Optional[int] = field(default=16, metadata={"help": "the PPO minibatch size"})
-    batch_size: Optional[int] = field(default=256, metadata={"help": "the batch size"})
-    gradient_accumulation_steps: Optional[int] = field(
-        default=1, metadata={"help": "the number of gradient accumulation steps"}
+    config: Optional[str] = field(
+        # Get file pa`th relative to this file
+        default=os.path.join(os.path.dirname(__file__), "configs", "rlhf_config.yaml"),
+        metadata={"help": "The name of the Weights and Biases config to use."}
     )
-    dataset_names: Optional[List[str]] = field(
-        default_factory=lambda: ["anthropic-red-team"],
-        metadata={"help": "the dataset name(s) to use"}
-    )
-    debug_max_prompts: Optional[int] = field(
-        default=0,
-        metadata={"help": "the maximum number of prompts to use for debugging"}
-    )
+    # model_name: Optional[str] = field(default="EleutherAI/gpt-neo-125M", metadata={"help": "the model name"})
+    # log_with: Optional[str] = field(default=None, metadata={"help": "use 'wandb' to log with wandb"})
+    # learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
+    # mini_batch_size: Optional[int] = field(default=16, metadata={"help": "the PPO minibatch size"})
+    # batch_size: Optional[int] = field(default=256, metadata={"help": "the batch size"})
+    # gradient_accumulation_steps: Optional[int] = field(
+    #     default=1, metadata={"help": "the number of gradient accumulation steps"}
+    # )
+    # dataset_names: Optional[List[str]] = field(
+    #     default_factory=lambda: ["anthropic-red-team"],
+    #     metadata={"help": "the dataset name(s) to use"}
+    # )
+    # debug_max_prompts: Optional[int] = field(
+    #     default=0,
+    #     metadata={"help": "the maximum number of prompts to use for debugging"}
+    # )
     notes: Optional[str] = field(
         default="",
         metadata={"help": "notes to add to the wandb run"}
@@ -209,23 +216,23 @@ def build_dataset(dataset_names, tokenizer, max_prompt_char_length=1024, debug_m
 
 def main():
     script_args = parse_args()
+    wandb.init(
+        entity=WANDB_ENTITY_NAME,
+        project=WANDB_PROJECT_NAME,
+        notes=script_args.notes,
+        save_code=True,
+        config=script_args.config,
+    )
+
     ppo_config = PPOConfig(
-        model_name=script_args.model_name,
-        learning_rate=script_args.learning_rate,
-        log_with=script_args.log_with,
-        mini_batch_size=script_args.mini_batch_size,
-        batch_size=script_args.batch_size,
-        gradient_accumulation_steps=script_args.gradient_accumulation_steps,
+        model_name=wandb.config.model_name,
+        learning_rate=wandb.config.learning_rate,
+        log_with=wandb.config.log_with,
+        mini_batch_size=wandb.config.mini_batch_size,
+        batch_size=wandb.config.batch_size,
+        gradient_accumulation_steps=wandb.config.gradient_accumulation_steps,
         seed=66,
     )
-    if script_args.log_with == "wandb":
-        wandb.init(
-            entity=WANDB_ENTITY_NAME,
-            project=WANDB_PROJECT_NAME,
-            notes=script_args.notes,
-            save_code=True,
-            config=script_args,
-        )
 
     assert ppo_config.mini_batch_size <= ppo_config.batch_size
     
@@ -233,7 +240,7 @@ def main():
     model_ref = AutoModelForCausalLMWithValueHead.from_pretrained(ppo_config.model_name)
     tokenizer = AutoTokenizer.from_pretrained(ppo_config.model_name, padding_side='left')
 
-    sent_kwargs = {"top_k": None, "function_to_apply": "none", "batch_size": script_args.batch_size}
+    sent_kwargs = {"top_k": None, "function_to_apply": "none", "batch_size": wandb.config.batch_size}
     
     # set seed before initializing value head for deterministic eval
     set_seed(ppo_config.seed)
@@ -245,7 +252,7 @@ def main():
     # # get model response
     # response_tensor  = respond_to_batch(model_ref, query_tensor)
 
-    dataset = build_dataset(script_args.dataset_names, tokenizer, debug_max_prompts=script_args.debug_max_prompts)    
+    dataset = build_dataset(wandb.config.dataset_names, tokenizer, debug_max_prompts=wandb.config.debug_max_prompts)    
 
     def collator(data):
         return dict((key, [d[key] for d in data]) for key in data[0])
@@ -261,7 +268,7 @@ def main():
     if ppo_trainer.accelerator.num_processes == 1:
         device = 0 if torch.cuda.is_available() else "cpu"  # to avoid a `pipeline` bug
     # This pipelinle is for hte reward model
-    sentiment_pipe = pipeline(model="OpenAssistant/reward-model-deberta-v3-base", device=device)
+    sentiment_pipe = pipeline(model=wandb.config.reward_model_name, device=device)
     print(f"The device is {device}")
 
     # We then define the arguments to pass to the `generate` function. These arguments

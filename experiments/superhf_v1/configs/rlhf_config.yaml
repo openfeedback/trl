@@ -1,0 +1,27 @@
+model_name:
+  desc: HuggingFace language model to use, or "mock" for testing
+  value: "theblackcat102/pythia-1b-deduped-sft"
+reward_model_name:
+  desc: HuggingFace reward model to use, or "mock" for testing
+  value: "OpenAssistant/reward-model-deberta-v3-large-v2"
+log_with:
+  desc: "The logger to use"
+  value: "wandb"
+learning_rate:
+  desc: "The learning rate"
+  value: 1.41 * 1.0e-5
+mini_batch_size:
+  desc: "The mini-batch size"
+  value: 2
+batch_size:
+  desc: "The batch size" # default 256 in og code
+  value: 4
+gradient_accumulation_steps:
+  desc: "The number of gradient accumulation steps"
+  value: 1
+dataset_names:
+  desc: The list of datasets to use for prompts. See src/superhf/data.py for available datasets.
+  value: ["anthropic-red-team", "anthropic-helpful-base", "anthropic-harmless-base", "openai/webgpt_comparisons"]
+debug_max_prompts:
+  desc: "The maximum number of prompts to use for debugging. 0 to use all prompts."
+  value: 124
