@@ -322,17 +322,18 @@ def main():
         ppo_trainer.log_stats(stats, batch, rewards)
 
         if len(wandb.config.hub_repo_id) > 0 and (epoch == len(ppo_trainer.dataloader) - 1 or (epoch > 0 and epoch % wandb.config.save_every == 0)):
+            run_name = wandb.run.name
             tqdm.write(f"Pushing model and tokenizer to the Hub! Location: {wandb.config.hub_repo_id}")
             ppo_trainer.model.push_to_hub(
                 repo_id=wandb.config.hub_repo_id,
                         commit_message=(
-                            f"Upload model from batch {epoch}"
+                            f"Upload model from batch {epoch}, run {run_name}"
                         )
             )
             ppo_trainer.tokenizer.push_to_hub(
                 repo_id=wandb.config.hub_repo_id,
                         commit_message=(
-                            f"Upload tokenizer from batch {epoch}"
+                            f"Upload tokenizer from batch {epoch}, run {run_name}"
                         )
             )
 
