@@ -17,10 +17,10 @@ import re
 from tqdm import tqdm
 
 import torch
+from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-from transformers import AutoTokenizer
-from transformers import AutoTokenizer, HfArgumentParser, pipeline
+from transformers import AutoTokenizer, HfArgumentParser, pipeline, get_scheduler
 
 
 from torchtyping import TensorType
@@ -257,9 +257,17 @@ def main():
     def collator(data):
         return dict((key, [d[key] for d in data]) for key in data[0])
 
+    scheduler = None
+    optimizer = None
+    if wandb.config.scheduler_name != "":
+        num_training_steps = len(dataset) // (wandb.config.batch_size * wandb.config.gradient_accumulation_steps)
+        optimizer = Adam(
+                filter(lambda p: p.requires_grad, model.parameters()), lr=wandb.config.learning_rate
+            )
+        scheduler = get_scheduler(wandb.config.scheduler_name, optimizer=optimizer, num_warmup_steps=wandb.config.scheduler_warmup_steps, num_training_steps=num_training_steps)
     # create a ppo trainer config, model, ref_model, tokenizer, dataset=dataset, data_collator=collator)
     # the dataset and collator get bundled in a data loader together. 
-    ppo_trainer = PPOTrainer(ppo_config, model, model_ref, tokenizer, dataset=dataset, data_collator=collator) #, data_collator=collator)
+    ppo_trainer = PPOTrainer(ppo_config, model, model_ref, tokenizer, dataset=dataset, data_collator=collator, optimizer=optimizer, lr_scheduler=scheduler) #, data_collator=collator)
 
     # We then build the sentiment analysis pipeline, passing the model name and the
     # sentiment analysis pipeline arguments. Let's also make sure to set the device

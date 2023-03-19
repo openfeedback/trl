@@ -40,3 +40,9 @@ save_every:
 hub_repo_id:
     desc: "The ID of the HuggingFace Hub repo to save to. If empty, doesn't write to the Hub."
     value: "rlhf_v1"
+scheduler_name:
+  desc: Name of the scheduler to use for fine-tuning the language model.
+  value: "linear"
+scheduler_warmup_steps:
+  desc: Number of warmup steps for the scheduler.
+  value: 20

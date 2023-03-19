@@ -18,7 +18,7 @@ batch_size:
   value: 4
 gradient_accumulation_steps:
   desc: "The number of gradient accumulation steps"
-  value: 1
+  value: 2
 max_new_tokens:
   desc: "The maximum number of new tokens to generate per prompt"
   value: 32
@@ -36,7 +36,13 @@ conversation_prompt:
   value: "A human user asks a question or says a statement, and a helpful, polite, honest, sophisticated, emotionally aware, and humble-but-knowledgeable AI assistant responds:"
 save_every:
     desc: "Save the model every n epochs"
-    value: 1
+    value: 4
 hub_repo_id:
     desc: "The ID of the HuggingFace Hub repo to save to. If empty, doesn't write to the Hub."
     value: "testing_saving-model"
+scheduler_name:
+  desc: Name of the scheduler to use for fine-tuning the language model.
+  value: "linear"
+scheduler_warmup_steps:
+  desc: Number of warmup steps for the scheduler.
+  value: 20
