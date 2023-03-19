@@ -330,6 +330,7 @@ def main():
 
 
 def trim_generations(raw_completions: list[str]) -> list[str]:
+    original_length = len(raw_completions)
     prompts_and_completions = [
         separate_prompt_from_completion(completion)
         for completion in raw_completions
@@ -340,50 +341,13 @@ def trim_generations(raw_completions: list[str]) -> list[str]:
         stripped_completion = re.split(
             constants.PROMPT_DELIMITER_REGEX_COMPLEX, completion, maxsplit=1
         )[0].strip()
-        if stripped_completion == "":
-            continue
+        # if stripped_completion == "":
+        #     continue
         trimmed_completions.append(prompt + " " + stripped_completion)
         model_completion_lengths.append(len(stripped_completion))
-    return trimmed_completions
 
-def consider_pushing_to_hub(self, superbatch_index: int, num_prompts: int) -> None:
-        """Pushes the model to the hub if it's appropriate to do so."""
-        if (  # pylint: disable=too-many-boolean-expressions
-            # User must specify a hub repo
-            self.training_args.hub_repo_id is not None
-            and self.training_args.hub_repo_id != ""
-            # User must specify a push interval
-            and self.training_args.push_to_hub_interval > 0
-            # Don't push on the first superbatch
-            and superbatch_index > 0
-            and (
-                # every N superbatches
-                superbatch_index % self.training_args.push_to_hub_interval == 0
-                # last superbatch
-                or superbatch_index == num_prompts - 1
-            )
-        ):
-            tqdm.write("Pushing model and tokenizer to the Hub!")
-            tqdm.write(
-                str(
-                    self.language_model.push_to_hub(
-                        repo_id=self.training_args.hub_repo_id,
-                        commit_message=(
-                            f"Upload model from superbatch {superbatch_index}"
-                        ),
-                    )
-                )
-            )
-            tqdm.write(
-                str(
-                    self.language_tokenizer.push_to_hub(
-                        repo_id=self.training_args.hub_repo_id,
-                        commit_message=(
-                            f"Upload tokenizer from superbatch {superbatch_index}"
-                        ),
-                    )
-                )
-            )
+    assert len(trimmed_completions) == original_length, "Trimmed completions should have the same length as the original completions."
+    return trimmed_completions
 
 if __name__ == "__main__":
     main()

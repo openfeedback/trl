@@ -13,9 +13,7 @@
             "justMyCode": false,
             "args": [
                 "--config",
-                "${workspaceFolder}/experiments/superhf_v1/configs/debug.yaml",
-                "--hub_repo_id",
-                "testing_model_push"
+                "${workspaceFolder}/experiments/superhf_v1/configs/debug.yaml"
             ]
         },
         {
