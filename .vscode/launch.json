@@ -13,7 +13,7 @@
             "justMyCode": false,
             "args": [
                 "--config",
-                "configs/debug.yaml"
+                "${workspaceFolder}/experiments/superhf_v1/configs/debug.yaml"
             ]
         },
         {

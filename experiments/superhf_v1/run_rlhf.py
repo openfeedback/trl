@@ -12,6 +12,7 @@ Example usage:
 from dataclasses import dataclass, field
 from typing import Optional, Iterator, TypeVar, List
 import random
+import re
 
 from tqdm import tqdm
 
@@ -34,6 +35,9 @@ T = TypeVar("T")
 import wandb
 
 import os
+
+import constants
+from utils import separate_prompt_from_completion
 
 WANDB_ENTITY_NAME = "stanfordaialignment"
 WANDB_PROJECT_NAME = "rlhf-trl-v0"
@@ -248,13 +252,6 @@ def main():
     # set seed before initializing value head for deterministic eval
     set_seed(ppo_config.seed)
 
-    # # encode a query
-    # query_txt = "This morning I went to the "
-    # query_tensor = tokenizer.encode(query_txt, return_tensors="pt")
-
-    # # get model response
-    # response_tensor  = respond_to_batch(model_ref, query_tensor)
-
     dataset = build_dataset(wandb.config.dataset_names, tokenizer, max_prompt_char_length=wandb.config.max_prompt_char_length, debug_max_prompts=wandb.config.debug_max_prompts, conversation_prompt=wandb.config.conversation_prompt)    
 
     def collator(data):
@@ -303,6 +300,7 @@ def main():
             response = ppo_trainer.generate(query, **generation_kwargs)
             response_tensors.append(response.squeeze())
         batch["response"] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
+        batch["response"] = trim_generations(batch["response"])
 
         # Compute sentiment score
         texts = [q + r for q, r in zip(batch["query"], batch["response"])]
@@ -314,6 +312,62 @@ def main():
         # Run PPO step
         stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
         ppo_trainer.log_stats(stats, batch, rewards)
+
+def trim_generations(raw_completions: list[str]) -> list[str]:
+    prompts_and_completions = [
+        separate_prompt_from_completion(completion)
+        for completion in raw_completions
+    ]
+    trimmed_completions: list[str] = []
+    model_completion_lengths: list[int] = []
+    for prompt, completion in prompts_and_completions:
+        stripped_completion = re.split(
+            constants.PROMPT_DELIMITER_REGEX_COMPLEX, completion, maxsplit=1
+        )[0].strip()
+        if stripped_completion == "":
+            continue
+        trimmed_completions.append(prompt + " " + stripped_completion)
+        model_completion_lengths.append(len(stripped_completion))
+    return trimmed_completions
+
+# def consider_pushing_to_hub(self, superbatch_index: int, num_prompts: int) -> None:
+#         """Pushes the model to the hub if it's appropriate to do so."""
+#         if (  # pylint: disable=too-many-boolean-expressions
+#             # User must specify a hub repo
+#             self.training_args.hub_repo_id is not None
+#             and self.training_args.hub_repo_id != ""
+#             # User must specify a push interval
+#             and self.training_args.push_to_hub_interval > 0
+#             # Don't push on the first superbatch
+#             and superbatch_index > 0
+#             and (
+#                 # every N superbatches
+#                 superbatch_index % self.training_args.push_to_hub_interval == 0
+#                 # last superbatch
+#                 or superbatch_index == num_prompts - 1
+#             )
+#         ):
+#             tqdm.write("Pushing model and tokenizer to the Hub!")
+#             tqdm.write(
+#                 str(
+#                     self.language_model.push_to_hub(
+#                         repo_id=self.training_args.hub_repo_id,
+#                         commit_message=(
+#                             f"Upload model from superbatch {superbatch_index}"
+#                         ),
+#                     )
+#                 )
+#             )
+#             tqdm.write(
+#                 str(
+#                     self.language_tokenizer.push_to_hub(
+#                         repo_id=self.training_args.hub_repo_id,
+#                         commit_message=(
+#                             f"Upload tokenizer from superbatch {superbatch_index}"
+#                         ),
+#                     )
+#                 )
+#             )
 
 if __name__ == "__main__":
     main()
