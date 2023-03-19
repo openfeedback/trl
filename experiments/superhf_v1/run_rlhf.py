@@ -40,7 +40,7 @@ import constants
 from utils import separate_prompt_from_completion
 
 WANDB_ENTITY_NAME = "stanfordaialignment"
-WANDB_PROJECT_NAME = "rlhf-trl-v0"
+WANDB_PROJECT_NAME = "rlhf-trl-v1"
 
 
 def get_superhf_prompts(dataset_name: str, split: str = "train") -> list[str]:
@@ -313,6 +313,22 @@ def main():
         stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
         ppo_trainer.log_stats(stats, batch, rewards)
 
+        if len(wandb.config.hub_repo_id) > 0 and (epoch == len(ppo_trainer.dataloader) - 1 or (epoch > 0 and epoch % wandb.config.save_every == 0)):
+            tqdm.write(f"Pushing model and tokenizer to the Hub! Location: {wandb.config.hub_repo_id}")
+            ppo_trainer.model.push_to_hub(
+                repo_id=wandb.config.hub_repo_id,
+                        commit_message=(
+                            f"Upload model from batch {epoch}"
+                        )
+            )
+            ppo_trainer.tokenizer.push_to_hub(
+                repo_id=wandb.config.hub_repo_id,
+                        commit_message=(
+                            f"Upload tokenizer from batch {epoch}"
+                        )
+            )
+
+
 def trim_generations(raw_completions: list[str]) -> list[str]:
     prompts_and_completions = [
         separate_prompt_from_completion(completion)
@@ -330,44 +346,44 @@ def trim_generations(raw_completions: list[str]) -> list[str]:
         model_completion_lengths.append(len(stripped_completion))
     return trimmed_completions
 
-# def consider_pushing_to_hub(self, superbatch_index: int, num_prompts: int) -> None:
-#         """Pushes the model to the hub if it's appropriate to do so."""
-#         if (  # pylint: disable=too-many-boolean-expressions
-#             # User must specify a hub repo
-#             self.training_args.hub_repo_id is not None
-#             and self.training_args.hub_repo_id != ""
-#             # User must specify a push interval
-#             and self.training_args.push_to_hub_interval > 0
-#             # Don't push on the first superbatch
-#             and superbatch_index > 0
-#             and (
-#                 # every N superbatches
-#                 superbatch_index % self.training_args.push_to_hub_interval == 0
-#                 # last superbatch
-#                 or superbatch_index == num_prompts - 1
-#             )
-#         ):
-#             tqdm.write("Pushing model and tokenizer to the Hub!")
-#             tqdm.write(
-#                 str(
-#                     self.language_model.push_to_hub(
-#                         repo_id=self.training_args.hub_repo_id,
-#                         commit_message=(
-#                             f"Upload model from superbatch {superbatch_index}"
-#                         ),
-#                     )
-#                 )
-#             )
-#             tqdm.write(
-#                 str(
-#                     self.language_tokenizer.push_to_hub(
-#                         repo_id=self.training_args.hub_repo_id,
-#                         commit_message=(
-#                             f"Upload tokenizer from superbatch {superbatch_index}"
-#                         ),
-#                     )
-#                 )
-#             )
+def consider_pushing_to_hub(self, superbatch_index: int, num_prompts: int) -> None:
+        """Pushes the model to the hub if it's appropriate to do so."""
+        if (  # pylint: disable=too-many-boolean-expressions
+            # User must specify a hub repo
+            self.training_args.hub_repo_id is not None
+            and self.training_args.hub_repo_id != ""
+            # User must specify a push interval
+            and self.training_args.push_to_hub_interval > 0
+            # Don't push on the first superbatch
+            and superbatch_index > 0
+            and (
+                # every N superbatches
+                superbatch_index % self.training_args.push_to_hub_interval == 0
+                # last superbatch
+                or superbatch_index == num_prompts - 1
+            )
+        ):
+            tqdm.write("Pushing model and tokenizer to the Hub!")
+            tqdm.write(
+                str(
+                    self.language_model.push_to_hub(
+                        repo_id=self.training_args.hub_repo_id,
+                        commit_message=(
+                            f"Upload model from superbatch {superbatch_index}"
+                        ),
+                    )
+                )
+            )
+            tqdm.write(
+                str(
+                    self.language_tokenizer.push_to_hub(
+                        repo_id=self.training_args.hub_repo_id,
+                        commit_message=(
+                            f"Upload tokenizer from superbatch {superbatch_index}"
+                        ),
+                    )
+                )
+            )
 
 if __name__ == "__main__":
     main()

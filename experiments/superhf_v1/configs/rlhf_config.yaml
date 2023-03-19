@@ -12,16 +12,16 @@ learning_rate:
   value: 0.0000141 # 1.41e-5
 mini_batch_size:
   desc: "The mini-batch size"
-  value: 2
+  value: 8
 batch_size:
   desc: "The batch size" # default 256 in og code
-  value: 32
+  value: 256
 gradient_accumulation_steps:
   desc: "The number of gradient accumulation steps"
   value: 1
 max_new_tokens:
   desc: "The maximum number of new tokens to generate per prompt"
-  value: 64
+  value: 32
 max_prompt_char_length:
   desc: "The maximum number of characters in a prompt"
   value: 1024
@@ -34,3 +34,9 @@ debug_max_prompts:
 conversation_prompt:
   desc: A prompt to prepend to every prompt before generation to get the model more on distribution.
   value: "A human user asks a question or says a statement, and a helpful, polite, honest, sophisticated, emotionally aware, and humble-but-knowledgeable AI assistant responds:"
+save_every:
+    desc: "Save the model every n epochs"
+    value: 25
+hub_repo_id:
+    desc: "The ID of the HuggingFace Hub repo to save to. If empty, doesn't write to the Hub."
+    value: "rlhf_v1"
