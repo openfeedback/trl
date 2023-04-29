@@ -65,6 +65,8 @@ class ScriptArguments:
     gradient_accumulation_steps: Optional[int] = field(
         default=1, metadata={"help": "the number of gradient accumulation steps"}
     )
+    early_stopping: Optional[bool] = field(default=False, metadata={"help": "whether to early stop"})
+    target_kl: Optional[float] = field(default=0.1, metadata={"help": "kl target for early stopping"})
 
 
 parser = HfArgumentParser(ScriptArguments)
@@ -77,6 +79,8 @@ config = PPOConfig(
     mini_batch_size=script_args.mini_batch_size,
     batch_size=script_args.batch_size,
     gradient_accumulation_steps=script_args.gradient_accumulation_steps,
+    early_stopping=script_args.early_stopping,
+    target_kl=script_args.target_kl,
 )
 
 
@@ -169,13 +173,10 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
     query_tensors = batch["input_ids"]
 
     # Get response from gpt2
-    response_tensors = []
-    for query in query_tensors:
-        gen_len = output_length_sampler()
-        generation_kwargs["max_new_tokens"] = gen_len
-        response = ppo_trainer.generate(query, **generation_kwargs)
-        response_tensors.append(response.squeeze()[-gen_len:])
-    batch["response"] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
+    response_tensors = ppo_trainer.generate(
+        query_tensors, return_prompt=False, length_sampler=output_length_sampler, **generation_kwargs
+    )
+    batch["response"] = tokenizer.batch_decode(response_tensors)
 
     # Compute sentiment score
     texts = [q + r for q, r in zip(batch["query"], batch["response"])]
