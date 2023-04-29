@@ -955,6 +955,8 @@ class PPOTrainer(BaseTrainer):
         for score, logprob, ref_logprob, mask in zip(scores, logprobs, ref_logprobs, masks):
             # compute KL penalty (from difference in logprobs)
             kl = logprob - ref_logprob
+            if self.config.clip_kl:
+                kl = torch.maximum(kl, torch.tensor(0))
             non_score_reward = -self.kl_ctl.value * kl
             non_score_rewards.append(non_score_reward)
             reward = non_score_reward.clone()

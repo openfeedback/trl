@@ -37,6 +37,10 @@ class PPOConfig(object):
         default=0.2,
         metadata={"help": "Initial KL penalty coefficient (used for adaptive and linear control)"},
     )
+    clip_kl: Optional[float] = field(
+        default=False,
+        metadata={"help": "Clip KL divergence in loss calculation to only be positive"},
+    )
     target: Optional[float] = field(default=6, metadata={"help": "Target KL value for adaptive KL control"})
     horizon: Optional[float] = field(default=10000, metadata={"help": "Horizon for adaptive KL control"})
     gamma: Optional[float] = field(default=1, metadata={"help": "Gamma parameter for advantage calculation"})
