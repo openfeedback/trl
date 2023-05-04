@@ -45,6 +45,8 @@ from ..import_utils import is_torch_greater_2_0
 from ..models import SUPPORTED_ARCHITECTURES, PreTrainedModelWrapper, create_reference_model
 from . import AdaptiveKLController, BaseTrainer, FixedKLController, PPOConfig
 
+from superhf.utils import print_gpu_utilization
+
 
 MODEL_CARD_TEMPLATE = """---
 license: apache-2.0
@@ -551,6 +553,7 @@ class PPOTrainer(BaseTrainer):
         Returns:
             `dict[str, Any]`: A summary of the training statistics
         """
+        print_gpu_utilization()
         bs = self.config.batch_size
 
         queries, responses, scores = self._step_safety_checker(bs, queries, responses, scores)
@@ -719,6 +722,8 @@ class PPOTrainer(BaseTrainer):
 
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
+        
+        print_gpu_utilization()
 
         return stats
 
