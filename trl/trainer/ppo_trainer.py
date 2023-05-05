@@ -16,6 +16,7 @@ import os
 import time
 import warnings
 from typing import Callable, List, Optional, Union
+from tqdm import tqdm
 
 import datasets
 import torch
@@ -553,6 +554,7 @@ class PPOTrainer(BaseTrainer):
         Returns:
             `dict[str, Any]`: A summary of the training statistics
         """
+        tqdm.write("we made it inside step")
         print_gpu_utilization()
         bs = self.config.batch_size
 
@@ -575,6 +577,7 @@ class PPOTrainer(BaseTrainer):
         t = time.time()
 
         model_inputs = self.prepare_model_inputs(queries, responses)
+        tqdm.write("We made it past prepare_model_inputs")
 
         if self.is_distributed:
             pad_first = self.tokenizer.padding_side == "left"
@@ -846,7 +849,11 @@ class PPOTrainer(BaseTrainer):
             input_kwargs = {key: value[i * fbs : (i + 1) * fbs] for key, value in model_inputs.items()}
             query_batch = queries[i * fbs : (i + 1) * fbs]
             response_batch = responses[i * fbs : (i + 1) * fbs]
+            tqdm.write(f"Batch {i + 1}/{int(bs / fbs)}")
+            print_gpu_utilization()
             logits, _, values = model(**input_kwargs)
+            tqdm.write(f"Logits shape: {logits.shape}. Made it pasat running model")
+            print_gpu_utilization()
 
             if self.is_encoder_decoder:
                 input_ids = input_kwargs["decoder_input_ids"]
@@ -884,7 +891,7 @@ class PPOTrainer(BaseTrainer):
             all_logprobs.append(logprobs)
             all_masks.append(masks)
 
-        print("Batched forward pass done.")
+        tqdm.write("Batched forward pass done.")
         print_gpu_utilization()
 
         return (
@@ -926,7 +933,7 @@ class PPOTrainer(BaseTrainer):
             train_stats (dict[str, `torch.Tensor`]):
                 Dictionary of training statistics
         """
-        print("Before train minibatch starts")
+        tqdm.write("Before train minibatch starts")
         print_gpu_utilization()
         loss_p, loss_v, train_stats = self.loss(old_logprobs, values, rewards, logits, vpreds, logprobs, mask)
         loss = loss_p + loss_v
@@ -940,7 +947,7 @@ class PPOTrainer(BaseTrainer):
 
         t = time.time()
         self.optimizer.step()
-        print("Train Minibatch step done.")
+        tqdm.write("Train Minibatch step done.")
         print_gpu_utilization()
         train_stats["time/ppo/optimizer_step"] = torch.Tensor([time.time() - t]).to(self.current_device)
         return train_stats
