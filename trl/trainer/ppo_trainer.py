@@ -884,6 +884,9 @@ class PPOTrainer(BaseTrainer):
             all_logprobs.append(logprobs)
             all_masks.append(masks)
 
+        print("Batched forward pass done.")
+        print_gpu_utilization()
+
         return (
             torch.cat(all_logprobs),
             torch.cat(all_logits)[:, :-1] if return_logits else None,
@@ -923,6 +926,8 @@ class PPOTrainer(BaseTrainer):
             train_stats (dict[str, `torch.Tensor`]):
                 Dictionary of training statistics
         """
+        print("Before train minibatch starts")
+        print_gpu_utilization()
         loss_p, loss_v, train_stats = self.loss(old_logprobs, values, rewards, logits, vpreds, logprobs, mask)
         loss = loss_p + loss_v
         self.optimizer.zero_grad()
@@ -935,6 +940,8 @@ class PPOTrainer(BaseTrainer):
 
         t = time.time()
         self.optimizer.step()
+        print("Train Minibatch step done.")
+        print_gpu_utilization()
         train_stats["time/ppo/optimizer_step"] = torch.Tensor([time.time() - t]).to(self.current_device)
         return train_stats
 
