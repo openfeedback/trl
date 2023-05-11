@@ -46,7 +46,7 @@ from ..import_utils import is_torch_greater_2_0
 from ..models import SUPPORTED_ARCHITECTURES, PreTrainedModelWrapper, create_reference_model
 from . import AdaptiveKLController, BaseTrainer, FixedKLController, PPOConfig
 
-# from superhf.utils import print_memory_utilization
+from superhf.utils import print_memory_utilization
 
 
 MODEL_CARD_TEMPLATE = """---
@@ -1145,6 +1145,7 @@ class PPOTrainer(BaseTrainer):
         stats: dict,
         batch: dict,
         rewards: List[torch.FloatTensor],
+        test_rewards: Optional[List[torch.FloatTensor]] = None,
     ):
         """
         A function that logs all the training stats. Call it at the end of each epoch.
@@ -1174,8 +1175,17 @@ class PPOTrainer(BaseTrainer):
             elif self.config.log_with == "wandb":
                 import wandb
 
-                table_rows = [list(r) for r in zip(batch["query"], batch["response"], rewards.cpu().tolist())]
-                logs.update({"game_log": wandb.Table(columns=["query", "response", "reward"], rows=table_rows)})
+                table_rows = [list(r) for r in zip(
+                        batch["query"],
+                        batch["response"],
+                        rewards.cpu().tolist(),
+                        test_rewards.cpu().tolist()
+                        if test_rewards is not None else [None] * len(batch["query"])
+                        )
+                    ]
+                logs.update({"game_log": wandb.Table(
+                        columns=["query", "response", "reward", "test_reward"], rows=table_rows
+                    )})
             # All reduce rewards if distributed
             if self.is_distributed:
                 import torch.distributed as dist
@@ -1199,6 +1209,14 @@ class PPOTrainer(BaseTrainer):
             logs["env/reward_mean"] = torch.mean(rewards).cpu().numpy().item()
             logs["env/reward_std"] = torch.std(rewards).cpu().numpy().item()
             logs["env/reward_dist"] = rewards.cpu().numpy()
+
+            logs["env/test_reward_mean"] = torch.mean(test_rewards).cpu().numpy().item()
+            logs["env/test_reward_std"] = torch.std(test_rewards).cpu().numpy().item()
+            logs["env/test_reward_dist"] = test_rewards.cpu().numpy()
+
+            logs["env/test_reward_mean"] = torch.mean(test_rewards).cpu().numpy().item()
+            logs["env/test_reward_std"] = torch.std(test_rewards).cpu().numpy().item()
+            logs["env/test_reward_dist"] = test_rewards.cpu().numpy()
 
             if self.config.log_with == "tensorboard":
                 # update the current step
