@@ -46,7 +46,7 @@ from ..import_utils import is_torch_greater_2_0
 from ..models import SUPPORTED_ARCHITECTURES, PreTrainedModelWrapper, create_reference_model
 from . import AdaptiveKLController, BaseTrainer, FixedKLController, PPOConfig
 
-# from superhf.utils import print_gpu_utilization
+# from superhf.utils import print_memory_utilization
 
 
 MODEL_CARD_TEMPLATE = """---
@@ -555,7 +555,7 @@ class PPOTrainer(BaseTrainer):
             `dict[str, Any]`: A summary of the training statistics
         """
         tqdm.write("we made it inside step")
-        # print_gpu_utilization()
+        # print_memory_utilization()
         bs = self.config.batch_size
 
         queries, responses, scores = self._step_safety_checker(bs, queries, responses, scores)
@@ -726,7 +726,7 @@ class PPOTrainer(BaseTrainer):
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
         
-        # print_gpu_utilization()
+        # print_memory_utilization()
 
         return stats
 
@@ -850,10 +850,10 @@ class PPOTrainer(BaseTrainer):
             query_batch = queries[i * fbs : (i + 1) * fbs]
             response_batch = responses[i * fbs : (i + 1) * fbs]
             tqdm.write(f"Batch {i + 1}/{int(bs / fbs)}")
-            # print_gpu_utilization()
+            # print_memory_utilization()
             logits, _, values = model(**input_kwargs)
             tqdm.write(f"Logits shape: {logits.shape}. Made it pasat running model")
-            # print_gpu_utilization()
+            # print_memory_utilization()
 
             if self.is_encoder_decoder:
                 input_ids = input_kwargs["decoder_input_ids"]
@@ -892,7 +892,7 @@ class PPOTrainer(BaseTrainer):
             all_masks.append(masks)
 
         tqdm.write("Batched forward pass done.")
-        # print_gpu_utilization()
+        # print_memory_utilization()
 
         return (
             torch.cat(all_logprobs),
@@ -934,7 +934,7 @@ class PPOTrainer(BaseTrainer):
                 Dictionary of training statistics
         """
         tqdm.write("Before train minibatch starts")
-        # print_gpu_utilization()
+        # print_memory_utilization()
         loss_p, loss_v, train_stats = self.loss(old_logprobs, values, rewards, logits, vpreds, logprobs, mask)
         loss = loss_p + loss_v
         self.optimizer.zero_grad()
@@ -948,7 +948,7 @@ class PPOTrainer(BaseTrainer):
         t = time.time()
         self.optimizer.step()
         tqdm.write("Train Minibatch step done.")
-        # print_gpu_utilization()
+        # print_memory_utilization()
         train_stats["time/ppo/optimizer_step"] = torch.Tensor([time.time() - t]).to(self.current_device)
         return train_stats
 
