@@ -110,7 +110,11 @@ class PPOConfig(object):
         default=1,
         metadata={"help": "Number of steps between comparison of the current reward with the best seen so far"},
     )
-
+    whiten_rewards: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to whiten rewards (divide by standard deviation, we do not mmodify mean)"},
+    )
+    
     def __post_init__(self):
         if self.forward_batch_size is not None:
             warnings.warn(

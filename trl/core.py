@@ -127,6 +127,8 @@ def masked_var(values, mask, unbiased=True):
 
 def masked_whiten(values, mask, shift_mean=True):
     """Whiten values with masked values."""
+    if values.size(0) < 8:
+        print(f"Warning: Masked whitening with small batch size of {values.size(0)} which is less then 8.")
     mean, var = masked_mean(values, mask), masked_var(values, mask)
     whitened = (values - mean) * torch.rsqrt(var + 1e-8)
     if not shift_mean:
