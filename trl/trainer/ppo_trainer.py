@@ -260,6 +260,7 @@ class PPOTrainer(BaseTrainer):
         if self.dataset is not None:
             self.dataloader = self.prepare_dataloader(self.dataset, data_collator)
         elif self.dataset is None and self.accelerator.num_processes > 1:
+            # pylint: disable=too-many-function-args
             warnings.warn(
                 (
                     "No dataset is provided. In a multi-GPU setting, this will lead to"
@@ -715,7 +716,7 @@ class PPOTrainer(BaseTrainer):
         timing["time/ppo/forward_pass"] = time.time() - t
 
         t = time.time()
-        rewards, non_score_reward = self.compute_rewards(
+        rewards, whitened_rewards, non_score_reward, kl = self.compute_rewards(
             scores, all_logprobs, ref_logprobs, masks
         )
         timing["time/ppo/compute_rewards"] = time.time() - t
@@ -727,7 +728,9 @@ class PPOTrainer(BaseTrainer):
             "logprobs": all_logprobs.to(torch.float32),
             "values": values.to(torch.float32),
             "rewards": rewards,
+            "whitened_rewards": whitened_rewards,
             "masks": masks,
+            "kl": kl,
         }
 
         def collator(data):
@@ -771,7 +774,7 @@ class PPOTrainer(BaseTrainer):
                 train_stats = self.train_minibatch(
                     batch["logprobs"],
                     batch["values"],
-                    batch["rewards"],
+                    batch["whitened_rewards"],
                     logprobs,
                     logits,
                     vpreds,
@@ -1101,7 +1104,7 @@ class PPOTrainer(BaseTrainer):
             ref_logprobs (`torch.FloatTensor`):
                 Log probabilities of the reference model, shape (`batch_size`, `response_length`)
         """
-        rewards, non_score_rewards = [], []
+        rewards, non_score_rewards, kls = [], [], []
         for score, logprob, ref_logprob, mask in zip(
             scores, logprobs, ref_logprobs, masks
         ):
@@ -1117,7 +1120,13 @@ class PPOTrainer(BaseTrainer):
             # reward is preference model score + KL penalty
             reward[last_non_masked_index] += score
             rewards.append(reward)
-        return torch.stack(rewards), torch.stack(non_score_rewards)
+            kls.append(kl)
+        # optionally whitten rewards
+        rewards = torch.stack(rewards)
+        whitened_rewards = rewards
+        if self.config.whiten_rewards:
+            whitened_rewards = masked_whiten(rewards, masks, shift_mean=False, verbose=True)
+        return rewards, whitened_rewards, torch.stack(non_score_rewards), torch.stack(kls)
 
     def loss(
         self,
@@ -1152,9 +1161,6 @@ class PPOTrainer(BaseTrainer):
 
         values = values * mask
         rewards = rewards * mask
-        if self.config.whiten_rewards:
-            rewards = masked_whiten(rewards, mask, shift_mean=False)
-
         for t in reversed(range(gen_len)):
             nextvalues = values[:, t + 1] if t < gen_len - 1 else 0.0
             delta = rewards[:, t] + self.config.gamma * nextvalues - values[:, t]
